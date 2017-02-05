@@ -11,7 +11,6 @@ type (
 
 		Params        interface{}
 		ResponseTopic *Topic
-		Handler       HandlerFunc
 		ctx           context.Context
 	}
 )

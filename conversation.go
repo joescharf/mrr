@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+	"strconv"
+
+	"github.com/golang/glog"
 )
 
 type (
-	Conversation interface {
+	ConversationInterface interface {
 		// Request returns `*Request`.
 		Request() *Request
 
@@ -64,42 +67,44 @@ type (
 		Mrr() *Mrr
 	}
 
-	conversation struct {
+	// Conversation is the implementation of ConversationInterface:
+	Conversation struct {
 		request *Request
 		payload map[string]interface{}
 		mrr     *Mrr
 	}
 )
 
-func (c *conversation) Request() *Request {
+func (c *Conversation) Request() *Request {
 	return c.request
 }
 
-func (c *conversation) SetRequest(r *Request) {
+func (c *Conversation) SetRequest(r *Request) {
 	c.request = r
 }
 
-func (c *conversation) Payload() map[string]interface{} {
+func (c *Conversation) Payload() map[string]interface{} {
 	return c.payload
 }
 
-func (c *conversation) SetResponseTopic(name string, qos byte) {
+func (c *Conversation) SetResponseTopic(name string, qos byte) {
 	c.request.ResponseTopic = NewTopic(name, qos)
 }
 
-func (c *conversation) SetPayload(data []byte) {
+func (c *Conversation) SetPayload(data []byte) {
 	json.Unmarshal(data, &c.payload)
+	glog.Infoln("Payload: ", c.payload)
 }
 
-func (c *conversation) Param(name string) interface{} {
+func (c *Conversation) Param(name string) interface{} {
 	return c.payload[name]
 }
 
-func (c *conversation) ParamBool(name string) bool {
+func (c *Conversation) ParamBool(name string) bool {
 	return c.payload[name].(bool)
 }
 
-func (c *conversation) ParamByte(name string) byte {
+func (c *Conversation) ParamByte(name string) byte {
 	val := c.ParamFloat64(name)
 	bits := math.Float64bits(val)
 	bytes := make([]byte, 8)
@@ -107,35 +112,47 @@ func (c *conversation) ParamByte(name string) byte {
 	return bytes[0]
 }
 
-func (c *conversation) ParamInt64(name string) int64 {
+func (c *Conversation) ParamInt64(name string) int64 {
 	val := c.ParamFloat64(name)
 	return int64(val)
 }
 
-func (c *conversation) ParamFloat64(name string) float64 {
+func (c *Conversation) ParamFloat64(name string) float64 {
+	ret := 0.0
 	if val, ok := c.payload[name]; ok {
-
-		if reflect.TypeOf(val).Name() == "float64" {
-			return c.payload[name].(float64)
+		switch t := reflect.TypeOf(val).Name(); t {
+		case "string":
+			ret, _ = strconv.ParseFloat(val.(string), 64)
+		case "float64":
+			ret = val.(float64)
+		default:
+			ret = 0.0
 		}
 	}
-	return 0.0
+	return ret
 }
 
-func (c *conversation) ParamString(name string) string {
+func (c *Conversation) ParamString(name string) string {
+	ret := ""
 	if val, ok := c.payload[name]; ok {
-		if reflect.TypeOf(val).Name() == "string" {
-			return val.(string)
+
+		switch t := reflect.TypeOf(val).Name(); t {
+		case "string":
+			ret = val.(string)
+		case "float64":
+			ret = strconv.FormatFloat(val.(float64), 'g', -1, 64)
+		default:
+			ret = ""
 		}
 	}
-	return ""
+	return ret
 }
 
-func (c *conversation) String(code int, s string) (err error) {
+func (c *Conversation) String(code int, s string) (err error) {
 	return c.Blob(code, []byte(s))
 }
 
-func (c *conversation) JSON(code int, i interface{}) (err error) {
+func (c *Conversation) JSON(code int, i interface{}) (err error) {
 	b, err := json.Marshal(i)
 	if err != nil {
 		return
@@ -143,7 +160,7 @@ func (c *conversation) JSON(code int, i interface{}) (err error) {
 	return c.JSONBlob(code, b)
 }
 
-func (c *conversation) JSONPretty(code int, i interface{}, indent string) (err error) {
+func (c *Conversation) JSONPretty(code int, i interface{}, indent string) (err error) {
 	b, err := json.MarshalIndent(i, "", indent)
 	if err != nil {
 		return
@@ -151,24 +168,24 @@ func (c *conversation) JSONPretty(code int, i interface{}, indent string) (err e
 	return c.JSONBlob(code, b)
 }
 
-func (c *conversation) JSONBlob(code int, b []byte) (err error) {
+func (c *Conversation) JSONBlob(code int, b []byte) (err error) {
 	return c.Blob(code, b)
 }
 
 // Blob writes the response to the designated responseTopic. If
 // responseTopic is nil, we use default of:
 // <incoming_topic>/_response with Qos matching the request Qos.
-func (c *conversation) Blob(code int, b []byte) (err error) {
+func (c *Conversation) Blob(code int, b []byte) (err error) {
 	// Determine what response topic is
 	rt := c.Request().ResponseTopic
-	if rt.Name() != "" {
-		c.Mrr().Client.Publish(rt.Name(), rt.Qos(), false, b)
+	if rt.Name != "" {
+		c.Mrr().Client.Publish(rt.Name, rt.Qos, false, b)
 	} else {
-		c.Mrr().Client.Publish(c.Request().Topic.Name()+"/_response", c.Request().Topic.Qos(), false, b)
+		c.Mrr().Client.Publish(c.Request().Topic.Name+"/_response", c.Request().Topic.Qos, false, b)
 	}
 	return
 }
 
-func (c *conversation) Mrr() *Mrr {
+func (c *Conversation) Mrr() *Mrr {
 	return c.mrr
 }

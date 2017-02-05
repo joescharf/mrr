@@ -3,43 +3,60 @@ package mrr
 import (
 	MQTT "github.com/eclipse/paho.MQTT.golang"
 
-	_ "encoding/json"
-	_ "github.com/davecgh/go-spew/spew"
 	"reflect"
 	"runtime"
 
+	"github.com/codegangsta/inject"
 	"github.com/golang/glog"
+
+	_ "github.com/davecgh/go-spew/spew"
 )
 
 type (
 	// Mrr is the top-level framework instance
 	Mrr struct {
-		Client  MQTT.Client
-		options *ClientOptions
-		routes  []*Route
+		inject.Injector
+		Client MQTT.Client
+		routes []*Route
 	}
 
-	// HandlerFunc defines a function to serve MQTT requests.
-	HandlerFunc func(Conversation) error
+	Topic struct {
+		Name string
+		Qos  byte
+	}
+
+	Route struct {
+		Topic   *Topic
+		Handler Handler
+		Err     error
+	}
+
+	// Handler can be any callable function.
+	// Mrr will inject services into handler's argument list
+	// and panics if an argument could not be fullfilled via dependency injection.
+	Handler interface{}
 )
 
-func NewClient(o *ClientOptions) *Mrr {
-	m := &Mrr{
-		options: o,
+func validateHandler(h Handler) Handler {
+
+	// Test handler is a function:
+	if reflect.TypeOf(h).Kind() != reflect.Func {
+		panic("MRR handler must be a callable function")
 	}
 
-	// Set configuration
-	co := MQTT.NewClientOptions()
-	co.AddBroker(o.Url)
-	co.SetClientID(o.ClientId)
-	co.SetUsername(o.Username)
-	co.SetPassword(o.Password)
-	co.SetOnConnectHandler(o.ConnectionHandler)
-	co.SetConnectionLostHandler(o.ConnectionLostHandler)
+	return h
+}
 
-	// Create the MQTT client:
-	m.Client = MQTT.NewClient(co)
+func New(c MQTT.Client) *Mrr {
+	m := &Mrr{
+		Injector: inject.New(),
+		Client:   c,
+	}
 	return m
+}
+
+func NewTopic(name string, qos byte) *Topic {
+	return &Topic{Name: name, Qos: qos}
 }
 
 // Connect connects to mqtt server
@@ -52,13 +69,16 @@ func (m *Mrr) Connect() {
 }
 
 // Add subscribes to a topic and adds the topic and handler to routing table
-func (m *Mrr) Add(topicName string, qos byte, h HandlerFunc) {
+func (m *Mrr) Add(topicName string, qos byte, h Handler) {
 
 	// Subscribe to the topic and specify ServeMQTT as common handler:
 	if token := m.Client.Subscribe(topicName, qos, m.routeMQTT); token.Wait() && token.Error() != nil {
 		glog.Errorf("Error subscribing to topic: %s, Error: %s", topicName, token.Error())
 	}
 	glog.Infoln("Subscribed to Topic:", topicName)
+
+	// Validate handler:
+	h = validateHandler(h)
 
 	//  Define the new route
 	route := &Route{Topic: NewTopic(topicName, qos), Handler: h}
@@ -67,7 +87,7 @@ func (m *Mrr) Add(topicName string, qos byte, h HandlerFunc) {
 	m.routes = append(m.routes, route)
 }
 
-// RouteMQTT is common router for all subscriptions
+// routeMQTT is common router for all subscriptions
 func (m *Mrr) routeMQTT(c MQTT.Client, msg MQTT.Message) {
 
 	// Create a request based on the msg
@@ -76,22 +96,25 @@ func (m *Mrr) routeMQTT(c MQTT.Client, msg MQTT.Message) {
 		Payload: msg.Payload(),
 	}
 
-	// Get a new context (conversation)
+	// Get a new context (conversation) and inject it as a service
 	conversation := m.newConversation(request)
+	m.Map(conversation)
 
 	// call the handler for the topic
 	if route := m.findRoute(request.Topic); route != nil {
 		handler := route.Handler
-		handler(conversation)
+		_, err := m.Invoke(handler) // Dep injection
+		if err != nil {
+			glog.Errorln("Error Invoking() handler: ", err)
+		}
 	}
 }
 
-func (m *Mrr) newConversation(r *Request) Conversation {
-	c := &conversation{
+func (m *Mrr) newConversation(r *Request) ConversationInterface {
+	c := &Conversation{
 		request: r,
 		mrr:     m,
 	}
-
 	// Convert the message payload:
 	c.SetPayload(r.Payload)
 
@@ -102,16 +125,16 @@ func (m *Mrr) newConversation(r *Request) Conversation {
 }
 
 func (m *Mrr) findRoute(topic *Topic) *Route {
-	name := topic.Name()
+	name := topic.Name
 	for _, route := range m.routes {
-		if route.Topic.Name() == name {
+		if route.Topic.Name == name {
 			return route
 		}
 	}
 	return nil
 }
 
-func handlerName(h HandlerFunc) string {
+func handlerName(h Handler) string {
 	t := reflect.ValueOf(h).Type()
 	if t.Kind() == reflect.Func {
 		return runtime.FuncForPC(reflect.ValueOf(h).Pointer()).Name()

@@ -18,31 +18,59 @@ This library currently uses the [Paho MQTT Client](https://github.com/eclipse/pa
 ```
 package main
 import (
+    MQTT "github.com/eclipse/paho.MQTT.golang"
     "github.com/joescharf/mrr"
 )
+
 func main () {
-    // Set MQTT connection optioins:
-    options := mrr.NewClientOptions()
-    options.Url = viper.GetString("MQTT.url")
-    options.ClientId = viper.GetString("MQTT.client_id")
+
+    // example device structure for custom service injection:
+    dev := &devInfo{}
+
+    // Set MQTT connection options (paho mqtt client):
+    options := MQTT.NewClientOptions()
+    options.AddBroker(viper.GetString("MQTT.url"))
+    options.ClientID = viper.GetString("MQTT.client_id")
     options.Username = viper.GetString("MQTT.username")
     options.Password = viper.GetString("MQTT.password")
 
-    // Create client with options
-    m := mrr.NewClient(options)
+    // Create MQTT client based on options:
+    mqtt := MQTT.NewClient(options)
 
-    // Connect to server
-    m.Connect()
+    // Establish MRR with mqtt client:
+    mrr := mrr.New(mqtt)
+
+    // Inject the devInfo{} service for handlers:
+    mrr.Map(dev)
+
+    // Connect to MQTT Server
+    mrr.Connect()
+    api.SetupRoutes(mrr)
 
     // Add some routes & subscribe to topics
     m.Add("device/cmd/helloworld", 0, HandleHelloWorld)
+    m.Add("device/cmd/open", 0, HandleDeviceOpen)
 
 }
 
+// Simple handler that just takes a mrr.Conversation
 func HandleHelloWorld(c mrr.Conversation) error {
     c.String(200, "Hello World!!")
     return nil
 }
+
+// Another handler that also depends on the devInfo struct,
+// And returns some data on a JSON payload
+func HandleDeviceOpen(c *mrr.Conversation, d *devInfo) error {
+    settings := d.Open()
+
+    payload := make(map[string]interface{})
+    payload["id"] = 42
+    payload["settings"] = settings
+
+    c.JSON(200, payload)
+}
+
 ```
 
 # Request
@@ -65,3 +93,30 @@ If the response topic fields are omitted, and a response is issued using the `Co
 
 Request topic: `/device/cmd/helloworld`
 Response topic: `/device/cmd/helloworld/_response`
+
+# Handlers
+
+Mrr uses Dependency Injection to resolve dependencies in a handler's argument list modeled after [Macaron Custom Services](https://go-macaron.com/docs/advanced/custom_services) 
+
+map a service as follows:
+
+```
+dev := &devInfo{}
+mrr := mrr.New(mqttClient)
+mrr.Map(dev)
+
+qos := 0
+mrr.Add("topic/goes/here", qos, SomeHandler))
+
+func SomeHandler(ctx *macaron.Context, d *devInfo) {
+    // Do stuff
+}
+```
+
+`Mrr` injects the `*mrr.Conversation` service and is most commonly used service in your handlers:
+
+```
+func SomeHandler(ctx *macaron.Context) {
+```
+
+
