@@ -183,6 +183,12 @@ func (c *Conversation) Blob(code int, b []byte) (err error) {
 	} else {
 		c.Mrr().Client.Publish(c.Request().Topic.Name+"/_response", c.Request().Topic.Qos, false, b)
 	}
+
+	// Check to see if we need to echo the response to the debug topic:
+	dt := c.Mrr().debugTopic
+	if dt.Name != "" {
+		c.Mrr().Client.Publish(dt.Name, dt.Qos, false, b)
+	}
 	return
 }
 

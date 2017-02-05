@@ -16,8 +16,9 @@ type (
 	// Mrr is the top-level framework instance
 	Mrr struct {
 		inject.Injector
-		Client MQTT.Client
-		routes []*Route
+		Client     MQTT.Client
+		routes     []*Route
+		debugTopic *Topic
 	}
 
 	Topic struct {
@@ -85,6 +86,10 @@ func (m *Mrr) Add(topicName string, qos byte, h Handler) {
 
 	// Add topic and handler to routing table:
 	m.routes = append(m.routes, route)
+}
+
+func (m *Mrr) SetDebugTopic(n string) {
+	m.debugTopic = NewTopic(n, 0)
 }
 
 // routeMQTT is common router for all subscriptions

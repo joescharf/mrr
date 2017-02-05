@@ -94,6 +94,15 @@ If the response topic fields are omitted, and a response is issued using the `Co
 Request topic: `/device/cmd/helloworld`
 Response topic: `/device/cmd/helloworld/_response`
 
+## Debug Topic:
+
+You can specify a debug topic to which all responses are published:
+
+```
+mrr.SetDebugTopic("device/debug")
+
+```
+
 # Handlers
 
 Mrr uses Dependency Injection to resolve dependencies in a handler's argument list modeled after [Macaron Custom Services](https://go-macaron.com/docs/advanced/custom_services) 
@@ -116,7 +125,7 @@ func SomeHandler(ctx *macaron.Context, d *devInfo) {
 `Mrr` injects the `*mrr.Conversation` service and is most commonly used service in your handlers:
 
 ```
-func SomeHandler(ctx *macaron.Context) {
+func SomeHandler(c *mrr.Conversation) {
 ```
 
 
