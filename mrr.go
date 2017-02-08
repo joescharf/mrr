@@ -4,12 +4,9 @@ import (
 	MQTT "github.com/eclipse/paho.MQTT.golang"
 
 	"reflect"
-	"runtime"
 
 	"github.com/codegangsta/inject"
 	"github.com/golang/glog"
-
-	_ "github.com/davecgh/go-spew/spew"
 )
 
 type (
@@ -30,6 +27,13 @@ type (
 		Topic   *Topic
 		Handler Handler
 		Err     error
+	}
+
+	Request struct {
+		Topic         *Topic
+		Payload       []byte
+		Params        interface{}
+		ResponseTopic *Topic
 	}
 
 	// Handler can be any callable function.
@@ -139,10 +143,16 @@ func (m *Mrr) findRoute(topic *Topic) *Route {
 	return nil
 }
 
-func handlerName(h Handler) string {
-	t := reflect.ValueOf(h).Type()
-	if t.Kind() == reflect.Func {
-		return runtime.FuncForPC(reflect.ValueOf(h).Pointer()).Name()
-	}
-	return t.String()
+// MQTT Connection State Handlers
+
+func HandleConnect(c MQTT.Client) {
+	glog.Infoln("MQTT Client Connected")
+}
+
+func HandleConnectionLost(c MQTT.Client, err error) {
+	glog.Infoln("MQTT Connection Lost:", err)
+}
+
+func HandleMessage(c MQTT.Client, m MQTT.Message) {
+	glog.Infoln("Received message on topic:", m.Topic())
 }
