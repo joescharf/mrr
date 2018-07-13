@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/golang/glog"
+	log "github.com/Sirupsen/logrus"
 )
 
 type (
@@ -93,7 +93,7 @@ func (c *Conversation) SetResponseTopic(name string, qos byte) {
 
 func (c *Conversation) SetPayload(data []byte) {
 	json.Unmarshal(data, &c.payload)
-	glog.Infoln("Payload: ", c.payload)
+	log.Infoln("Payload: ", c.payload)
 }
 
 func (c *Conversation) Param(name string) interface{} {

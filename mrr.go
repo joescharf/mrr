@@ -1,12 +1,12 @@
 package mrr
 
 import (
-	MQTT "github.com/eclipse/paho.MQTT.golang"
+	MQTT "github.com/eclipse/paho.mqtt.golang"
 
 	"reflect"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/inject"
-	"github.com/golang/glog"
 )
 
 type (
@@ -66,11 +66,11 @@ func NewTopic(name string, qos byte) *Topic {
 
 // Connect connects to mqtt server
 func (m *Mrr) Connect() {
-	glog.Infoln("MQTT Connecting")
+	log.Debugln("MQTT Connecting")
 	if token := m.Client.Connect(); token.Wait() && token.Error() != nil {
-		glog.Errorln("MQTT Connect Error", token.Error())
+		log.Errorln("MQTT Connect Error", token.Error())
 	}
-	glog.Infoln("MQTT Connected")
+	log.Debugln("MQTT Connected")
 }
 
 // Add subscribes to a topic and adds the topic and handler to routing table
@@ -78,9 +78,9 @@ func (m *Mrr) Add(topicName string, qos byte, h Handler) {
 
 	// Subscribe to the topic and specify ServeMQTT as common handler:
 	if token := m.Client.Subscribe(topicName, qos, m.routeMQTT); token.Wait() && token.Error() != nil {
-		glog.Errorf("Error subscribing to topic: %s, Error: %s", topicName, token.Error())
+		log.Errorf("Error subscribing to topic: %s, Error: %s", topicName, token.Error())
 	}
-	glog.Infoln("Subscribed to Topic:", topicName)
+	log.Debugln("Subscribed to Topic:", topicName)
 
 	// Validate handler:
 	h = validateHandler(h)
@@ -114,7 +114,7 @@ func (m *Mrr) routeMQTT(c MQTT.Client, msg MQTT.Message) {
 		handler := route.Handler
 		_, err := m.Invoke(handler) // Dep injection
 		if err != nil {
-			glog.Errorln("Error Invoking() handler: ", err)
+			log.Errorln("Error Invoking() handler: ", err)
 		}
 	}
 }
@@ -146,13 +146,13 @@ func (m *Mrr) findRoute(topic *Topic) *Route {
 // MQTT Connection State Handlers
 
 func HandleConnect(c MQTT.Client) {
-	glog.Infoln("MQTT Client Connected")
+	log.Debugln("MQTT Client Connected")
 }
 
 func HandleConnectionLost(c MQTT.Client, err error) {
-	glog.Infoln("MQTT Connection Lost:", err)
+	log.Debugln("MQTT Connection Lost:", err)
 }
 
 func HandleMessage(c MQTT.Client, m MQTT.Message) {
-	glog.Infoln("Received message on topic:", m.Topic())
+	log.Debugln("Received message on topic:", m.Topic())
 }
