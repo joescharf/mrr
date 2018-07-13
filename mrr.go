@@ -5,8 +5,8 @@ import (
 
 	"reflect"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/codegangsta/inject"
+	log "github.com/sirupsen/logrus"
 )
 
 type (
